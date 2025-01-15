@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: dockerfile
+    ports:
+      - "3000:3000" # map container's port 3000 to host's port 3000
+    depends_on:
+      - backend # ensures backend is running before frontend starts
+    
+  backend:
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db # ensures database is running before backend starts
+
+  db:
+    image: postgres:14
+    environment: 
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: nba_betting # database name
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:
