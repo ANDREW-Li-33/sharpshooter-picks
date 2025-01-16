@@ -3,11 +3,19 @@ from flask_cors import CORS
 import requests
 from datetime import datetime
 import os
+from dotenv import load_dotenv  # Add this import
+
+# Load environment variables at the start of the application
+load_dotenv()  # This reads from your .env file
 
 app = Flask(__name__)
 CORS(app)
 
-API_KEY = "ed1a2b920da4501697efc5b43a5407e4"
+# Get API key from environment variable with error handling
+API_KEY = os.getenv('ODDS_API_KEY')
+if not API_KEY:
+    raise ValueError("Missing ODDS_API_KEY environment variable. Make sure you have a .env file with this value.")
+
 BASE_URL = "https://api.the-odds-api.com/v4"
 
 def calculate_confidence(odds):

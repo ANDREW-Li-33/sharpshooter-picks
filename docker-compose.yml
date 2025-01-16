@@ -1,26 +1,25 @@
+version: '3.8'
 
 services:
   frontend:
     build:
-      context: ./frontend  # This tells Docker to look in the frontend directory
+      context: ./frontend
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
-    volumes:
-      - ./frontend:/app  # Mount for hot reloading
-      - /app/node_modules  # Prevents overwriting node_modules
-    environment:
-      - NODE_ENV=development
     depends_on:
       - backend
+    environment:
+      - NODE_ENV=development
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      FLASK_APP: app.py
-      FLASK_ENV: development
+      - FLASK_APP=app.py
+      - FLASK_ENV=development
+      - ODDS_API_KEY=${ODDS_API_KEY}  # This will use the value from your .env file
     ports:
       - "5001:5000"
     depends_on:
@@ -29,9 +28,9 @@ services:
   db:
     image: postgres:14
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: nba_betting
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
