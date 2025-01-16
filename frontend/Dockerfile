@@ -1,29 +1,20 @@
-# Build stage
-FROM node:20 AS build
+# Use Node.js as our base image
+FROM node:18-alpine
 
-# Set the working directory
+# Set working directory in the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json
+# Copy package files first (this helps with caching)
 COPY package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy all source code
+# Copy the rest of the application
 COPY . .
 
-# Build the Next.js application
-RUN npm run build
-
-# Run stage: Serve the app using Nginx
-FROM nginx:alpine
-
-# Copy the build output from the previous stage to the Nginx HTML directory
-COPY --from=build /app/.next /usr/share/nginx/html
-
-# Expose port 3000 for Nginx
+# Expose the port Next.js runs on
 EXPOSE 3000
 
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start the development server
+CMD ["npm", "run", "dev"]

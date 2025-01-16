@@ -1,34 +1,37 @@
-version: '3.8'
 
 services:
-
   frontend:
     build:
-      context: ./frontend
-      dockerfile: dockerfile
+      context: ./frontend  # This tells Docker to look in the frontend directory
+      dockerfile: Dockerfile
     ports:
-      - "3000:3000" # map container's port 3000 to host's port 3000
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app  # Mount for hot reloading
+      - /app/node_modules  # Prevents overwriting node_modules
+    environment:
+      - NODE_ENV=development
     depends_on:
-      - backend # ensures backend is running before frontend starts
-    
+      - backend
+
   backend:
     build:
       context: ./backend
-      dockerfile: dockerfile
+      dockerfile: Dockerfile
     environment:
       FLASK_APP: app.py
       FLASK_ENV: development
     ports:
       - "5001:5000"
     depends_on:
-      - db # ensures database is running before backend starts
+      - db
 
   db:
     image: postgres:14
-    environment: 
+    environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: nba_betting # database name
+      POSTGRES_DB: nba_betting
     ports:
       - "5432:5432"
     volumes:
