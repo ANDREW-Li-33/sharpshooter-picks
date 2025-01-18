@@ -11,6 +11,11 @@ services:
       - backend
     environment:
       - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true  # Enable polling for file changes
+    volumes:
+      - ./frontend:/app           # Mount the frontend source code
+      - /app/node_modules         # Prevent overwriting node_modules
+    command: npm run dev          # Ensure the dev server is running
 
   backend:
     build:
@@ -19,11 +24,14 @@ services:
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=development
-      - ODDS_API_KEY=${ODDS_API_KEY}  # This will use the value from your .env file
+      - ODDS_API_KEY=${ODDS_API_KEY}  # Uses value from .env file
     ports:
       - "5001:5000"
     depends_on:
       - db
+    volumes:
+      - ./backend:/app            # Mount the backend source code
+      - /app/venv                 # If using a virtual environment
 
   db:
     image: postgres:14

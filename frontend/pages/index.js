@@ -1,12 +1,8 @@
 import { useState } from 'react';
-import TopPicks from '../components/TopPicks';
+import BettingTabs from '../components/BettingTabs';
 
 export default function Home() {
     const [selectedGame, setSelectedGame] = useState(null);
-
-    const handleGameSelect = (game) => {
-        setSelectedGame(game);
-    };
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -20,10 +16,9 @@ export default function Home() {
 
             <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    {/* Left column: Today's Picks */}
+                    {/* Left column: Betting Tabs */}
                     <div className="bg-white shadow rounded-lg p-6">
-                        <h2 className="text-xl font-semibold mb-4">Today's Top Picks</h2>
-                        <TopPicks onGameSelect={handleGameSelect} />
+                        <BettingTabs />
                     </div>
 
                     {/* Right column: Detailed Analysis */}

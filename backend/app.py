@@ -41,7 +41,7 @@ def get_picks():
             params={
                 "apiKey": API_KEY,
                 "regions": "us",
-                "markets": "h2h", # todo: create cards for totals
+                "markets": "h2h",
                 "oddsFormat": "american"
             }
         )
@@ -110,12 +110,91 @@ def get_picks():
             except Exception as e:
                 print(f"Error processing game {idx}: {str(e)}")
                 continue
-
+        
         return jsonify(processed_games)
 
     except requests.exceptions.RequestException as e:
         print(f"Request error: {str(e)}")
         return jsonify({"error": "Failed to fetch game data"}), 500
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        return jsonify({"error": "An unexpected error occurred"}), 500
+    
+
+@app.route("/api/props", methods=["GET"])
+def get_player_props():
+    try:
+        # Get all NBA games
+        games_response = requests.get(
+            f"{BASE_URL}/sports/basketball_nba/events",
+            params={
+                "apiKey": API_KEY
+            }
+        )
+        
+        if games_response.status_code != 200:
+            print(f"Games API Error: {games_response.status_code}", games_response.text)
+            return jsonify({"error": "Failed to fetch games"}), 500
+            
+        games = games_response.json()
+        processed_props = []
+        
+        # For each game, get player props
+        for game in games:
+            try:
+                props_response = requests.get(
+                    f"{BASE_URL}/sports/basketball_nba/events/{game['id']}/odds",
+                    params={
+                        "apiKey": API_KEY,
+                        "regions": "us",
+                        "markets": "player_points,player_rebounds,player_assists",
+                        "oddsFormat": "american",
+                        "bookmakers": "draftkings"
+                    }
+                )
+                
+                if props_response.status_code != 200:
+                    continue
+                    
+                props_data = props_response.json()
+                
+                # Process bookmaker data
+                if not props_data.get('bookmakers'):
+                    continue
+                    
+                bookmaker = props_data['bookmakers'][0]  # DraftKings
+                
+                for market in bookmaker['markets']:
+                    for outcome in market['outcomes']:
+                        confidence = calculate_confidence(outcome['price'])
+                        if confidence is None:
+                            continue
+                            
+                        processed_props.append({
+                            "id": f"{game['id']}-{market['key']}-{outcome['name']}",
+                            "game": f"{game['home_team']} vs {game['away_team']}",
+                            "start_time": game['commence_time'],
+                            "name": outcome['name'], 
+                            "player": outcome['description'],
+                            "market": market['key'].replace('player_', '').title(),
+                            "line": outcome['point'],
+                            "odds": outcome['price'],
+                            "confidence": confidence
+                        })
+                        
+            except Exception as e:
+                print(f"Error processing props for game {game['id']}: {str(e)}")
+                continue
+
+        # Sort by confidence descending
+        processed_props.sort(key=lambda x: x['confidence'], reverse=True)
+        
+        # Return top 10 most confident props
+        return jsonify(processed_props[:10])
+
+    except requests.exceptions.RequestException as e:
+        print(f"Request error: {str(e)}")
+        return jsonify({"error": "Failed to fetch prop data"}), 500
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
         return jsonify({"error": "An unexpected error occurred"}), 500
