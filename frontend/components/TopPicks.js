@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 
+
+// Displays the top betting picks of the day as determined by the system
 export default function TopPicks({ onGameSelect }) {
     const [games, setGames] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
