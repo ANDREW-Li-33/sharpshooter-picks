@@ -31,8 +31,14 @@ class Database:
 
     def init_db(self):
         # with statement ensures automatic resource cleanup even if an error occurs
-        # a cursor is an object that allows you to interact with a database by executing SQL queries and fetchign results
+        # a cursor is an object that allows you to interact with a database by executing SQL queries and fetching results
         with self.get_cursor() as cur: 
+
+            # VARCHAR(n) allows for a string of maximum length n
+            # id is the primary key
+            # serial primary key autoincrements with each row
+            # each players and player_stats are analogous to two separate excel sheets. each row is an entry (player), and each column represents an attirbute
+            # (name, team, position, etc.)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS players (
                     id VARCHAR(10) PRIMARY KEY,
