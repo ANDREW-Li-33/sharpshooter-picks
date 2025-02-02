@@ -17,6 +17,7 @@ class Database:
     
 
     # this method helps us safely manage database connections
+    # a context manager automatically manages database transactions and cleanup
     @contextmanager # decorator that turns a function into a context manager, which allows the function to be used with Python's "with" statement
     def get_cursor(self): 
         connection = psycopg2.connect(**self.config, cursor_factory=RealDictCursor)
@@ -32,6 +33,7 @@ class Database:
     def init_db(self):
         # with statement ensures automatic resource cleanup even if an error occurs
         # a cursor is an object that allows you to interact with a database by executing SQL queries and fetching results
+        # no need for try, except, finally
         with self.get_cursor() as cur: 
 
             # VARCHAR(n) allows for a string of maximum length n
