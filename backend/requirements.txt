@@ -1,4 +1,4 @@
-requests>-2.26.0
+requests>=2.26.0
 Flask>=2.0.0
 flask-cors>=4.0.0
 python-dotenv>=0.19.0
@@ -7,3 +7,5 @@ numpy>=1.21.0
 typing>=3.7.4
 torch>=2.0.0
 nba_api==1.7.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0

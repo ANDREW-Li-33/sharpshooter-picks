@@ -1,66 +1,45 @@
-import os # allows access to host computer's environment variables and OS-level functionality (ex. os.mkdir())
-import psycopg2 # PostgreSQL adapter, allows python applications to interact with Postgresql databases
-from psycopg2.extras import RealDictCursor # helps return database results as dictionaries
-from contextlib import contextmanager # aids in safe database connections
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean
+from sqlalchemy.orm import declarative_base
+import os
 
-class Database:
-    # dunder (double underline) method, allow for customizability of Python's built-in operations (ex. object construction, addition, subtraction)
-    def __init__(self):
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://localhost:5432/nba_betting')
+engine = create_engine(DATABASE_URL)
+Base = declarative_base()
 
-        # database connection settings so that the app knows where and how to connect to the database
-        self.config = {
-            'host': os.getenv('POSTGRES_HOST', 'db'), # possible places the database could be hosted is locally, in a container, or in the cloud
-            'database': os.getenv('POSTGRES_DB', 'nba_stats'),
-            'user': os.getenv('POSTGRES_USER', 'postgres'),
-            'password': os.getenv('POSTGRES_PASSWORD') # 2nd parameter is default value, there's no default password for security purposes
-        }
+class Player(Base):
+    __tablename__ = 'players'
     
+    id = Column(Integer, primary_key=True)
+    player_id = Column(Integer, unique=True)
+    full_name = Column(String)
+    is_active = Column(Boolean, default=True)
 
-    # this method helps us safely manage database connections
-    # a context manager automatically manages database transactions and cleanup
-    @contextmanager # decorator that turns a function into a context manager, which allows the function to be used with Python's "with" statement
-    def get_cursor(self): 
-        connection = psycopg2.connect(**self.config, cursor_factory=RealDictCursor)
-        try:
-            yield connection.cursor()
-            connection.commit()
-        except Exception as e:
-            connection.rollback()
-            raise e
-        finally: # always runs
-            connection.close()
+class PlayerStats(Base):
+    __tablename__ = 'player_stats'
+    
+    id = Column(Integer, primary_key=True)
+    game_id = Column(String)
+    player_id = Column(Integer)
+    game_date = Column(DateTime)
+    season = Column(String)
+    is_home_game = Column(Boolean)
+    minutes_played = Column(String)
+    points = Column(Integer)
+    assists = Column(Integer)
+    rebounds = Column(Integer)
+    steals = Column(Integer)
+    blocks = Column(Integer)
+    turnovers = Column(Integer)
+    plus_minus = Column(Integer)
+    fg_made = Column(Integer)
+    fg_attempted = Column(Integer)
+    fg3_made = Column(Integer)
+    fg3_attempted = Column(Integer)
+    ft_made = Column(Integer)
+    ft_attempted = Column(Integer)
 
-    def init_db(self):
-        # with statement ensures automatic resource cleanup even if an error occurs
-        # a cursor is an object that allows you to interact with a database by executing SQL queries and fetching results
-        # no need for try, except, finally
-        with self.get_cursor() as cur: 
+def init_db():
+    Base.metadata.create_all(engine)
 
-            # VARCHAR(n) allows for a string of maximum length n
-            # id is the primary key
-            # serial primary key autoincrements with each row
-            # each players and player_stats are analogous to two separate excel sheets. each row is an entry (player), and each column represents an attirbute
-            # (name, team, position, etc.)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS players (
-                    id VARCHAR(10) PRIMARY KEY,
-                    name VARCHAR(100) NOT NULL,
-                    team VARCHAR(50),
-                    position VARCHAR(10),
-                    height VARCHAR(10),
-                    weight INTEGER                        
-                );
-                CREATE TABLE IF NOT EXISTS player_stats (
-                    id SERIAL PRIMARY KEY,
-                    player_id VARCHAR(10) REFERENCES players(id),
-                    season VARCHAR(10),
-                    games_played INTEGER,
-                    points DECIMAL,
-                    rebounds DECIMAL,
-                    assists DECIMAL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-
-db = Database()
-
+if __name__ == "__main__":
+    init_db()
