@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 from typing import List, Dict, Set
 from sqlalchemy.orm import Session
-from models.database import Game, PlayerStats, engine
+from models.database import PlayerStats, Player, engine
 import logging
 
 logging.basicConfig(
@@ -82,24 +82,14 @@ class PlayerStatsIngestion:
                 continue
         
         return pd.concat(all_games) if all_games else pd.DataFrame()
-
-    def process_game_data(self, game_data: pd.Series) -> Dict:
-        """
-        Process raw game data into structured format.
         
-        Args:
-            game_data (pd.Series): Single game data
-            
-        Returns:
-            Dict: Processed game data
-        """
+    def process_game_data(self, game_data: pd.Series) -> Dict:
         return {
             'game_id': game_data['Game_ID'],
             'player_id': game_data['Player_ID'],
             'season': game_data['SEASON'],
             'game_date': pd.to_datetime(game_data['GAME_DATE']),
             'home_game': 'vs.' in game_data['MATCHUP'],
-            'team_id': game_data['Team_ID'],
             'minutes_played': game_data['MIN'],
             'points': game_data['PTS'],
             'rebounds': game_data['REB'],
@@ -108,13 +98,14 @@ class PlayerStatsIngestion:
             'blocks': game_data['BLK'],
             'turnovers': game_data['TOV'],
             'plus_minus': game_data['PLUS_MINUS'],
-            'fg_made': game_data['FGM'],
-            'fg_attempted': game_data['FGA'],
-            'fg3_made': game_data['FG3M'],
-            'fg3_attempted': game_data['FG3A'],
-            'ft_made': game_data['FTM'],
-            'ft_attempted': game_data['FTA']
+            'fg_made': game_data.get('FGM', 0),
+            'fg_attempted': game_data.get('FGA', 0),
+            'fg3_made': game_data.get('FG3M', 0),
+            'fg3_attempted': game_data.get('FG3A', 0),
+            'ft_made': game_data.get('FTM', 0),
+            'ft_attempted': game_data.get('FTA', 0)
         }
+
 
     def store_player_stats(self, stats_data: Dict):
         """
@@ -145,7 +136,7 @@ class PlayerStatsIngestion:
                     is_home_game=stats_data['home_game']
                 )
                 
-                session.merge(stats)
+                session.merge(stats) # prevents duplicate data
                 session.commit()
                 
             except Exception as e:
@@ -156,6 +147,7 @@ class PlayerStatsIngestion:
         """Run the complete historical stats ingestion process."""
         logger.info("Starting historical stats ingestion")
         logger.info(f"Will collect data for seasons: {', '.join(self.seasons)}")
+        logger.info("=" * 80)
         
         active_players = self.get_active_players()
         total_players = len(active_players)
@@ -180,7 +172,9 @@ class PlayerStatsIngestion:
             except Exception as e:
                 logger.error(f"Error processing player {player['full_name']}: {e}")
                 continue
-        
+
+            logger.info("=" * 80)
+
         logger.info("Historical stats ingestion completed")
 
 if __name__ == "__main__":
