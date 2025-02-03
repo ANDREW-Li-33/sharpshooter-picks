@@ -1,31 +1,35 @@
-import matplotlib.pyplot as plt
 import pandas as pd
+from IPython.display import HTML, display
 from sqlalchemy.orm import Session
-from models.database import PlayerStats, engine
+from models.database import Player, PlayerStats, engine
 
-def plot_player_points(player_id):
-    # Open a session and load the data for the given player
+def display_player_table(player_id):
     with Session(engine) as session:
         query = session.query(PlayerStats).filter(PlayerStats.player_id == player_id)
         df = pd.read_sql(query.statement, session.bind)
+        player_info = session.query(Player).filter(Player.player_id == player_id).first()
+        player_name = player_info.full_name if player_info else f"Player {player_id}"
 
     if df.empty:
-        print(f"No data found for player {player_id}")
+        print(f"No data found for {player_name}")
         return
 
-    # Ensure the game_date column is in datetime format and sort by date
     df['game_date'] = pd.to_datetime(df['game_date'])
     df = df.sort_values('game_date')
 
-    # Plotting the points over time
-    plt.figure(figsize=(10, 6))
-    plt.plot(df['game_date'], df['points'], marker='o', linestyle='-', color='blue')
-    plt.title(f'Points Over Time for Player {player_id}')
-    plt.xlabel('Game Date')
-    plt.ylabel('Points')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    html_table = df.to_html(index=False, justify='center')
+    html_code = f"""
+        <h3>Data Entries for {player_name}</h3>
+        <div style="max-height: 500px; overflow-y: auto; border: 1px solid #ccc;">
+            {html_table}
+        </div>
+    """
+
+    # Save HTML to a file
+    with open("visualizations/outputs/player_table.html", "w") as file:
+        file.write(html_code)
+    print("HTML table saved to player_table.html. Open this file in your browser to view the table.")
+
 
 if __name__ == "__main__":
-    plot_player_points(1626164)
+    display_player_table(1626164)
