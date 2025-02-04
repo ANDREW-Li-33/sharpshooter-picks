@@ -3,15 +3,14 @@ from nba_api.stats.endpoints import leaguegamefinder
 import pandas as pd
 import random
 
-# Step 1: Get active players and select one.
+# Step 1: get active players and select one
 active_players = players.get_active_players()
 
 king_james = [player for player in active_players if player['full_name'] == "LeBron James"][0]
 player_id = king_james['id']
 print(f"Selected Player: {king_james['full_name']} (ID: {player_id})")
 
-# Step 2: Retrieve games for the player.
-# We omit the date filter and allow games from multiple seasons.
+# Step 2: retrieve games for the player
 
 seasons = [
    "2024-25",
@@ -28,8 +27,15 @@ for season in seasons:
         player_id_nullable=player_id,
         season_type_nullable="Regular Season",
         season_nullable=season
-    )   
+    ) 
+
+    # converts gamefinder into a pandas dataframe
     games_df = gamefinder.get_data_frames()[0]
+
+    print(games_df.head()) # first 5 rows
+    print(games_df.columns) # gives column labels (ex. plyer names, points scored)
+    print(games_df.index) # gives row index
+    print(games_df.index.tolist()) 
 
     season_id = games_df['SEASON_ID'].iloc[0]  # '22019'
     year = int(season_id[1:])  # 2019
@@ -38,7 +44,7 @@ for season in seasons:
     print(f"Found {len(games_df)} games for {king_james['full_name']} during the {formatted_year} regular season.")
 
 minimum_season = 0
-max_season = 4
+max_season = len(seasons) - 1
 random_season = seasons[random.randint(minimum_season, max_season)]
 
 print(random_season)
@@ -50,7 +56,13 @@ gamefinder = leaguegamefinder.LeagueGameFinder(
     season_nullable=random_season
 )
 
-print(gamefinder.get_dict()['data_sets']['LeagueGameFinderResults'])
+games_df = gamefinder.get_data_frames()[0]
+
+cols_to_describe = [col for col in games_df.columns if col != "TEAM_ID"]
+print(games_df[cols_to_describe].describe())
+
+print(games_df['MIN'])
+print(games_df.iloc[1]) # (integer location) accesses the second row
 
 # games_df = gamefinder.get_data_frames()[0]
 

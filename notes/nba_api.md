@@ -42,3 +42,7 @@ can be used to retrieve every game a player has played
         player_id_nullable=player_id
     )   
     ```
+
+
+.get_data_frames() 
+- helper function provided by the API
