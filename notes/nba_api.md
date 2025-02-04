@@ -3,7 +3,7 @@
 
 ##### finding all active players
 - from nba_api.stats.static import players
-- players._get_active_players()
+- players.get_active_players()
 ```JSON
     player = {
         'id': player_id,
@@ -14,18 +14,20 @@
     }
 ``` 
 
+##### Find every game a player has ever played
+```python
+gamefinder = leaguegamefinder.LeagueGameFinder(
+    player_or_team_abbreviation="P",
+    player_id_nullable=player_id,
+    season_type_nullable=regular,
+    season_nullable="2019-20"
+)   
+```
+
+##### Get a list of games only within the last 5 seasons
 
 
-##### finding all games a certain player has played within the last 5 years
-- 
-accessing basic box score stats for each game that player has played
-
-
-
-
-
-
-#### finding a game
+#### BoxScore for a particular game
 ##### nba_api -> live -> endpoints
 - [BoxScore](https://github.com/swar/nba_api/blob/master/docs/nba_api/live/endpoints/boxscore.md)
 
