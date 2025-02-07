@@ -64,7 +64,7 @@ Initializes PostgreSQL database for the app
 #### Database Schema
 <u>Players Table</u>
 
-```json
+```properties
 id: Primary key
 player_id: Unique NBA ID
 full_name: Player name
@@ -74,7 +74,7 @@ is_active: Active status
 
 <u> PlayerStats Table </u>
 
-```
+```properties
 id: Primary key
 game_id: Game identifier
 player_id: Foreign key to Players
