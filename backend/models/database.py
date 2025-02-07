@@ -1,3 +1,4 @@
+# sqlalchemy simply provides a Python interface to interact with PostgreSQL
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean
 from sqlalchemy.orm import declarative_base
 import os
