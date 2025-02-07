@@ -6,7 +6,7 @@ import random
 # Step 1: get active players and select one
 active_players = players.get_active_players()
 
-king_james = [player for player in active_players if player['full_name'] == "LeBron James"][0]
+king_james = [player for player in active_players if player['full_name'] == "Jayson Tatum"][0]
 player_id = king_james['id']
 print(f"Selected Player: {king_james['full_name']} (ID: {player_id})")
 
