@@ -87,7 +87,7 @@ class NBADataIngestion:
                     player_id_nullable=player_id,
                     season_type_nullable="Regular Season",
                     season_nullable=season,
-                    timeout=60  # increase timeout to 60 seconds
+                    timeout=120
                 )
                 
                 games_df = gamefinder.get_data_frames()[0]
