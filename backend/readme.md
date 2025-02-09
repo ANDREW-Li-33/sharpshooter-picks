@@ -15,8 +15,18 @@ backend/
 ├── init_db.py                   
 └── requirements.txt     
 <hr>
+<br>
+```database.py``` defines what data can be stored (table structures) -> ```db_init.py``` creates the actual database and tables -> ```ingestion.py``` uses ```database.py``` and ```db_init.py``` to fetch NBA data and stores it in the correct format.
 
-### <u>database.py </u>
+<br>
+
+Using the SQLAlchemy ORM (Object Relational Mapping) in ```database.py```, the application is able to translate between Python objects and database records, meaning the database records can be manipulated in Python.
+
+
+<hr>
+
+
+### <u>models/database.py </u>
 defines the SQLAlchemy ORM models for the player stats database
 
 ORM (Object-Relational Mapping) models allow us to interact with database records with Python objects without writing SQL queries

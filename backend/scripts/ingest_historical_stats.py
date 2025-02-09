@@ -47,6 +47,7 @@ class NBADataIngestion:
         self.http_adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session = requests.Session()
         self.session.mount("https://", self.http_adapter)
+        # updates request headers to make the HTTP request appear to come from a chrome browser instead of a script, helps prevent benig blocked by websites
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
@@ -62,48 +63,44 @@ class NBADataIngestion:
             return []
 
     def get_player_games(self, player_id: int, season: str) -> pd.DataFrame:
-        """
-        Fetch games for a specific player in a given season.
-        
-        Args:
-            player_id (int): NBA API player ID
-            season (str): Season in format "YYYY-YY"
-            
-        Returns:
-            pd.DataFrame: DataFrame containing player's games
-        """
-        max_retries = 3
+        max_retries = 5  
         current_retry = 0
-        base_delay = 2  # base delay in seconds
+        base_delay = 2 
         
         while current_retry < max_retries:
             try:
-                # Add delay with jitter to avoid rate limiting
-                delay = base_delay * (1.5 ** current_retry) + random.uniform(0.1, 1.0)
+                # exponential backoff
+                delay = base_delay * (2 ** current_retry) + random.uniform(1.0, 3.0)
                 time.sleep(delay)
                 
                 gamefinder = leaguegamefinder.LeagueGameFinder(
                     player_or_team_abbreviation="P",
                     player_id_nullable=player_id,
-                    season_type_nullable="Regular Season",
                     season_nullable=season,
-                    timeout=120
+                    season_type_nullable="Regular Season",
+                    timeout=180 
                 )
+                
+                # proxy rotation
+                headers = {
+                    'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(80, 108)}.0.0.0'
+                }
+                self.session.headers.update(headers)
                 
                 games_df = gamefinder.get_data_frames()[0]
                 if not games_df.empty:
-                    logger.info(f"Found {len(games_df)} games for player {player_id} in season {season}")
+                    logger.info(f"Successfully retrieved data for player {player_id}")
                     return games_df
                 
                 return pd.DataFrame()
-                
+                    
             except Exception as e:
                 current_retry += 1
                 if current_retry < max_retries:
-                    logger.warning(f"Attempt {current_retry} failed for player {player_id} in season {season}: {e}")
+                    logger.warning(f"Attempt {current_retry} failed: {e}")
                     continue
                 else:
-                    logger.error(f"Error fetching games for player {player_id} in season {season} after {max_retries} attempts: {e}")
+                    logger.error(f"Failed after {max_retries} attempts: {e}")
                     return pd.DataFrame()
 
     def process_game_data(self, game_data: pd.Series, season: str) -> Dict:
@@ -208,7 +205,7 @@ class NBADataIngestion:
                 continue
             
             # Add a longer delay between players
-            time.sleep(random.uniform(2, 4))
+            time.sleep(random.uniform(1, 3))
             logger.info("=" * 80)
 
         logger.info("Historical data ingestion completed")
