@@ -38,9 +38,3 @@ class PlayerStats(Base):
     fg3_attempted = Column(Integer)
     ft_made = Column(Integer)
     ft_attempted = Column(Integer)
-
-def init_db():
-    Base.metadata.create_all(engine)
-
-if __name__ == "__main__":
-    init_db()
