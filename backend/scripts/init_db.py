@@ -5,35 +5,29 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import database_exists, create_database
 import logging
 
-# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Import your models
-from models.database import Base, Player, PlayerStats
+from ..models.database import Base, Player, PlayerStats
 
 def init_database():
     """Initialize the database and create all tables if they don't exist."""
-    # Get database URL from environment variable
+
     DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://localhost:5432/nba_betting')
     
     try:
-        # Create engine
         engine = create_engine(DATABASE_URL)
         
-        # Create database if it doesn't exist
         if not database_exists(engine.url):
             logger.info(f"Creating database at {engine.url}")
             create_database(engine.url)
         
-        # Create tables
         logger.info("Creating tables if they don't exist...")
         Base.metadata.create_all(engine)
         
-        # Verify tables were created
         inspector = inspect(engine)
         tables = inspector.get_table_names()
         logger.info("Created tables: " + ", ".join(tables))
