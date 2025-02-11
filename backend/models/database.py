@@ -7,7 +7,9 @@ DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://localhost:5432/nba_bettin
 engine = create_engine(DATABASE_URL)
 Base = declarative_base()
 
+# use Python classes instead of directly using SQL to create tables
 class Player(Base):
+    # __tablename__ is used by SQLAlchemy to create the table name
     __tablename__ = 'players'
     
     id = Column(Integer, primary_key=True)
