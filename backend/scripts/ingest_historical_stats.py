@@ -38,22 +38,20 @@ class NBADataIngestion:
             for year in range(self.current_season - 5, self.current_season)
         ]
         
-        # Configure retry strategy
         retry_strategy = Retry(
-            total=5,  # number of retries
-            backoff_factor=2,  # wait 1, 2, 4, 8, 16 seconds between retries
-            status_forcelist=[429, 500, 502, 503, 504]  # HTTP status codes to retry on
+            total=5,
+            backoff_factor=2,
+            status_forcelist=[429, 500, 502, 503, 504]
         )
+
         self.http_adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session = requests.Session()
-        self.session.mount("https://", self.http_adapter)
-        # updates request headers to make the HTTP request appear to come from a chrome browser instead of a script, helps prevent benig blocked by websites
-        self.session.headers.update({
+        self.http_session = requests.Session()
+        self.http_session.mount("https://", self.http_adapter)
+        self.http_session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
         
     def get_active_players(self) -> List[Dict]:
-        """Get list of currently active NBA players."""
         try:
             active_players = players.get_active_players()
             logger.info(f"Found {len(active_players)} active players")
@@ -69,11 +67,10 @@ class NBADataIngestion:
         
         while current_retry < max_retries:
             try:
-                # exponential backoff
                 delay = base_delay * (2 ** current_retry) + random.uniform(1.0, 3.0)
                 time.sleep(delay)
                 
-                gamefinder = leaguegamefinder.LeagueGameFinder(
+                player_games_query = leaguegamefinder.LeagueGameFinder(
                     player_or_team_abbreviation="P",
                     player_id_nullable=player_id,
                     season_nullable=season,
@@ -81,13 +78,12 @@ class NBADataIngestion:
                     timeout=180 
                 )
                 
-                # proxy rotation
                 headers = {
                     'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(80, 108)}.0.0.0'
                 }
-                self.session.headers.update(headers)
+                self.http_session.headers.update(headers)
                 
-                games_df = gamefinder.get_data_frames()[0]
+                games_df = player_games_query.get_data_frames()[0]
                 if not games_df.empty:
                     logger.info(f"Successfully retrieved data for player {player_id}")
                     return games_df
@@ -104,7 +100,6 @@ class NBADataIngestion:
                     return pd.DataFrame()
 
     def process_game_data(self, game_data: pd.Series, season: str) -> Dict:
-        """Process raw game data into format matching database schema."""
         try:
             return {
                 'game_id': game_data['GAME_ID'],
@@ -132,18 +127,14 @@ class NBADataIngestion:
             return None
 
     def store_player_data(self, player: Dict):
-        """Store or update player information in database."""
         with Session(engine) as session:
             try:
-                # Try to find existing player first
                 existing_player = session.query(Player).filter_by(player_id=player['id']).first()
                 
                 if existing_player:
-                    # Update existing player
                     existing_player.full_name = player['full_name']
                     existing_player.is_active = True
                 else:
-                    # Create new player
                     player_record = Player(
                         player_id=player['id'],
                         full_name=player['full_name'],
@@ -157,7 +148,6 @@ class NBADataIngestion:
                 session.rollback()
 
     def store_game_stats(self, stats_data: Dict):
-        """Store game statistics in database."""
         if not stats_data:
             return
             
@@ -171,7 +161,6 @@ class NBADataIngestion:
                 session.rollback()
 
     def run_ingestion(self):
-        """Run the complete historical data ingestion process."""
         logger.info("Starting historical data ingestion")
         logger.info(f"Will collect data for seasons: {', '.join(self.seasons)}")
         logger.info("=" * 80)
@@ -182,18 +171,13 @@ class NBADataIngestion:
         for idx, player in enumerate(active_players, 1):
             try:
                 logger.info(f"Processing player {idx}/{total_players}: {player['full_name']}")
-                
-                # Store player information
                 self.store_player_data(player)
-                
-                # Get games for each season
                 for season in self.seasons:
                     games_df = self.get_player_games(player['id'], season)
                     
                     if games_df.empty:
                         continue
                     
-                    # Process and store each game
                     for _, game in games_df.iterrows():
                         processed_data = self.process_game_data(game, season)
                         self.store_game_stats(processed_data)
@@ -204,7 +188,6 @@ class NBADataIngestion:
                 logger.error(f"Error processing player {player['full_name']}: {e}")
                 continue
             
-            # Add a longer delay between players
             time.sleep(random.uniform(1, 3))
             logger.info("=" * 80)
 
