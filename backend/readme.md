@@ -106,3 +106,12 @@ fg3_attempted: Integer
 ft_made: Integer
 ft_attempted: Integer
 ```
+
+
+### Opening the PostgreSQL tables in Excel (for my own reference)
+1. connect to the database psql in command line ```postgresql://localhost:5432/nba_betting```
+2. \dt to view tables in the database
+3. ```\copy (SELECT * FROM <table_name>) '~/Documents/Sharpshooter Picks/<table_name>.csv' CSV HEADER```
+single quotations are used in the filepath because there's a space in the folder name
+ex. ```\copy (SELECT * FROM players) '~/Documents/Sharpshooter Picks/players.csv' CSV HEADER```
+ex. ```\copy (SELECT * FROM player_stats) '~/Documents/Sharpshooter Picks/player_stats.csv' CSV HEADER```
