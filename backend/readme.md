@@ -107,6 +107,7 @@ ft_made: Integer
 ft_attempted: Integer
 ```
 
+<hr>
 
 ### Opening the PostgreSQL tables in Excel (for my own reference)
 1. connect to the database psql in command line ```postgresql://localhost:5432/nba_betting```
