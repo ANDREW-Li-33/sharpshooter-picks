@@ -6,9 +6,24 @@
 Models are trained on [nba_api](https://github.com/swar/nba_api)  and picks are found using [odds-api](https://the-odds-api.com/).
 
 
+Users can also individually choose from the most popular bookmakers, including DraftKings, Fanduel, and BetMGM
+
 <hr>
 
-## Tech Stack
+## 🛠️ Tech Stack
+
+### Frontend
+
+- Framework: Next.js (React)
+- UI Components:
+  - shadcn/ui components
+  - Radix UI primitives
+  - Lucide React icons
+
+
+- Styling: Tailwind CSS
+- Data Fetching: Native fetch API with interval updates
+
 ### Backend
 
 - Framework: Flask (Python)
@@ -28,18 +43,6 @@ Models are trained on [nba_api](https://github.com/swar/nba_api)  and picks are 
 
 
 
-### Frontend
-
-- Framework: Next.js (React)
-- UI Components:
-  - shadcn/ui components
-  - Radix UI primitives
-  - Lucide React icons
-
-
-- Styling: Tailwind CSS
-- Data Fetching: Native fetch API with interval updates
-
 ### DevOps
 
 - Containerization: Docker / Docker Compose
@@ -48,4 +51,13 @@ Models are trained on [nba_api](https://github.com/swar/nba_api)  and picks are 
 
 <hr>
 
+
+## 📊 Data Pipeline
+
+1. Gather all currently active players from nba_api (One time)
+2. For each player, gather stats for every game for that player within the last 5 years (One time)
+3. Machine learning model training (One time)
+4. Real time fetching of  player proposition bets for the day from all bookmakers listed in odds-api that support player prop betting 
+5. Confidence score calculation, calculates which bets have the highest chance of hitting
+6. Frontend displays bets with the highest confidence score and updates 
 
