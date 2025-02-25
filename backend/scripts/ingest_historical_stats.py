@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from typing import List, Dict
 from sqlalchemy.orm import Session
-from models.database import PlayerStats, Player, engine
+from backend.models.db_schema import PlayerStats, Player, engine
 import logging
 import random
 import requests

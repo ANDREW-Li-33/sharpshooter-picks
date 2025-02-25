@@ -1,15 +1,7 @@
-# sqlalchemy simply provides a Python interface to interact with PostgreSQL
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
-from sqlalchemy.orm import declarative_base
-import os
+from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from backend.database_config import Base
 
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://localhost:5432/nba_betting')
-engine = create_engine(DATABASE_URL)
-Base = declarative_base()
-
-# use Python classes instead of directly using SQL to create tables
 class Player(Base):
-    # __tablename__ is used by SQLAlchemy to create the table name
     __tablename__ = 'players'
     
     id = Column(Integer, primary_key=True)
