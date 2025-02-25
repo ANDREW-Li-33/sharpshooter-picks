@@ -1,0 +1,27 @@
+
+
+ML Model Implementation
+
+Implement the NBAPredictor class in ml_model.py (currently returns None)
+Develop the prediction algorithm using PyTorch
+Implement the get_prediction_with_confidence() function
+
+Connect ML Model with API Endpoints
+
+Modify /api/picks and /api/props to use ML predictions
+Add endpoints for model performance metrics
+
+
+display bookmaker odds vs. SharpshooterPicks calculated odds
+
+
+Frontend
+
+ Connect to Real API
+
+Replace mock data in BettingDashboard.jsx with actual API calls
+Ensure consistent error handling across components
+
+
+Add responsive design for mobile devices
+Implement dark mode
