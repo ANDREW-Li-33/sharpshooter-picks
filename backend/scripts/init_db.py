@@ -11,7 +11,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from backend.database_config import Base, engine  
+from backend.db_config import Base, engine  
 from backend.models.db_schema import Player, PlayerStats
 
 def init_database():

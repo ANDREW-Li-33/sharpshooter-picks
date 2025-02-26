@@ -4,7 +4,7 @@ import requests
 from datetime import datetime
 import os
 from dotenv import load_dotenv  
-from ml_model import NBAPredictor 
+from backend.ml.ml_model import NBAPredictor 
 
 load_dotenv()  # loads environment variables from .env file
 
