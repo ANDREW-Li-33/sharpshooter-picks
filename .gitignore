@@ -76,3 +76,5 @@ logs/
 # System Files
 .DS_Store
 Thumbs.db
+
+repomix-output.txt
