@@ -54,6 +54,8 @@ Users can also individually choose from the most popular bookmakers, including D
 
 ## 📊 Data Pipeline
 
+![SharpshooterPicks Data Pipeline](notes/images/SharpshooterPicks-data-pipeline.drawio.png)
+
 1. Gather all currently active players from nba_api (One time)
 2. For each player, gather stats for every game for that player within the last 5 years (One time)
 3. Machine learning model training (One time)
