@@ -11,3 +11,5 @@ Fix Database Connection Issues
 
 
 display bookmaker odds vs. SharpshooterPicks calculated odds
+
+discssuion forum where users can discuss bets
