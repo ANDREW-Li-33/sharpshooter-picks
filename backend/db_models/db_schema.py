@@ -3,7 +3,7 @@ from backend.db_config import Base
 
 class Player(Base):
     __tablename__ = 'players'
-    __tableargs__ = {'extend_existing': True}
+    __table_args__ = {'extend_existing': True}
     
     id = Column(Integer, primary_key=True)
     player_id = Column(Integer, unique=True)
@@ -12,7 +12,7 @@ class Player(Base):
 
 class PlayerStats(Base):
     __tablename__ = 'player_stats'
-    __tableargs__ = {'extend_existing': True}
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True)
     game_id = Column(String)
