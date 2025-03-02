@@ -102,6 +102,11 @@ class NBADataIngestion:
                     return pd.DataFrame()
 
     def process_game_data(self, game_data: pd.Series, season: str) -> Dict:
+        """
+            formats raw game data into a Python Dictionary
+
+        """
+
         try:
             return {
                 'game_id': game_data['GAME_ID'],
@@ -149,7 +154,14 @@ class NBADataIngestion:
                 logger.error(f"Error storing player data: {e}")
                 session.rollback()
 
+
     def store_game_stats(self, stats_data: Dict):
+        """
+            Inserts or updates processed game data into PostgreSQL database 
+
+            - uses SQLalchemy ORM with session management
+        """
+
         if not stats_data:
             return
             
