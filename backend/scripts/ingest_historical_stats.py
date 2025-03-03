@@ -2,14 +2,13 @@ import sys
 from pathlib import Path
 import pandas as pd
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import random
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import argparse
-import concurrent.futures
 import json
 import os
 from typing import List, Dict, Optional, Union, Tuple, Set
@@ -75,7 +74,6 @@ class NBADataIngestion:
         # Default configuration
         self.default_config = {
             "seasons_to_fetch": 5,  # Number of past seasons to fetch
-            "max_concurrent_requests": 3,  # Max concurrent API requests
             "request_delay_min": 1.0,  # Minimum delay between requests in seconds
             "request_delay_max": 3.0,  # Maximum delay between requests in seconds
             "batch_size": 10,  # Number of players to process in a batch before committing
@@ -141,7 +139,10 @@ class NBADataIngestion:
             "db_updates": 0,
             "errors": 0,
             "start_time": None,
-            "end_time": None
+            "end_time": None,
+            "last_update_time": None,
+            "last_timer_check": None,
+            "timer_interval": 60  # How often to update timer (in seconds)
         }
         
         logger.info(f"Initialized NBA Data Ingestion with seasons: {', '.join(self.seasons)}")
@@ -557,102 +558,94 @@ class NBADataIngestion:
         
         return games_processed, errors
     
-    def process_player_batch(self, batch: List[Dict]) -> None:
+    def calculate_time_remaining(self, processed_count, total_count):
         """
-        Process a batch of players, committing at the end.
+        Calculate and format estimated time remaining for the process.
         
         Args:
-            batch: List of player dictionaries
-        """
-        try:
-            for player in batch:
-                games_processed, errors = self.process_player(player)
-                logger.info(f"Player {player['full_name']}: {games_processed} games processed, {errors} errors")
+            processed_count: Number of items processed so far
+            total_count: Total number of items to process
             
-            # Commit the batch
-            self.commit_batch()
-            
-        except Exception as e:
-            logger.error(f"Error processing player batch: {e}")
-            self.stats["errors"] += 1
-    
-    def run_concurrent_ingestion(self, max_players=None):
+        Returns:
+            Formatted string with estimated time remaining
         """
-        Run the ingestion process with concurrent workers.
+        if processed_count == 0:
+            return "Calculating..."
+            
+        current_time = datetime.now()
+        elapsed = (current_time - self.stats["start_time"]).total_seconds()
+        
+        # Calculate time per item and estimate remaining time
+        time_per_item = elapsed / processed_count
+        items_remaining = total_count - processed_count
+        seconds_remaining = time_per_item * items_remaining
+        
+        # Format remaining time
+        remaining_time = timedelta(seconds=int(seconds_remaining))
+        hours, remainder = divmod(remaining_time.total_seconds(), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        
+        # Format as HH:MM:SS
+        time_str = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+        
+        # Add estimated completion time
+        completion_time = current_time + remaining_time
+        completion_str = completion_time.strftime("%H:%M:%S")
+        
+        return f"{time_str} remaining (estimated completion at {completion_str})"
+        
+    def update_timer(self, processed_count, total_count, force=False):
+        """
+        Update the timer display if the interval has passed.
         
         Args:
-            max_players: Maximum number of players to process (for testing)
+            processed_count: Number of items processed so far
+            total_count: Total number of items to process
+            force: Force update regardless of timer interval
         """
-        logger.info("Starting concurrent data ingestion")
-        logger.info(f"Will collect data for seasons: {', '.join(self.seasons)}")
-        logger.info("=" * 80)
+        current_time = datetime.now()
         
-        self.stats["start_time"] = datetime.now()
-        
-        # Get active players
-        active_players = self.get_active_players()
-        
-        if not active_players:
-            logger.error("Failed to retrieve active players list")
+        # Initialize last timer check if needed
+        if self.stats["last_timer_check"] is None:
+            self.stats["last_timer_check"] = current_time
             return
-        
-        # Limit players if max_players is specified (useful for testing)
-        if max_players:
-            active_players = active_players[:max_players]
-        
-        total_players = len(active_players)
-        logger.info(f"Processing {total_players} players with {self.config['max_concurrent_requests']} concurrent workers")
-        
-        # Create batches of players
-        batch_size = self.config["batch_size"]
-        player_batches = [active_players[i:i + batch_size] for i in range(0, len(active_players), batch_size)]
-        
-        logger.info(f"Created {len(player_batches)} batches of up to {batch_size} players each")
-        
-        # Create a thread pool
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.config["max_concurrent_requests"]) as executor:
-            # Submit all batches for processing
-            futures = [executor.submit(self.process_player_batch, batch) for batch in player_batches]
             
-            # Create a progress bar for better visualization
-            with tqdm(total=len(player_batches), desc="Processing batches") as pbar:
-                for future in concurrent.futures.as_completed(futures):
-                    try:
-                        # future.result() would contain the result if process_player_batch returned a value
-                        pbar.update(1)
-                    except Exception as e:
-                        logger.error(f"Batch processing error: {e}")
-                        self.stats["errors"] += 1
+        time_since_check = (current_time - self.stats["last_timer_check"]).total_seconds()
         
-        logger.info("All player batches have been processed")
+        # Update timer if interval passed or forced
+        if force or time_since_check >= self.stats["timer_interval"]:
+            remaining_str = self.calculate_time_remaining(processed_count, total_count)
+            elapsed = (current_time - self.stats["start_time"]).total_seconds()
+            hours, remainder = divmod(elapsed, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            elapsed_str = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+            
+            progress_pct = (processed_count / total_count) * 100 if total_count > 0 else 0
+            
+            logger.info(f"Progress: {processed_count}/{total_count} players ({progress_pct:.1f}%)")
+            logger.info(f"Elapsed time: {elapsed_str} | {remaining_str}")
+            
+            # Update timer check timestamp
+            self.stats["last_timer_check"] = current_time
+            
+            return remaining_str
         
-        # Run cleanup operations if configured
-        if self.config["clean_duplicates"]:
-            self.clean_duplicate_entries()
-        
-        if self.config["verify_data"]:
-            self.verify_ingested_data()
-        
-        self.stats["end_time"] = datetime.now()
-        self.print_stats()
-        
-        # Close the database session
-        self.close_session()
-        
-        logger.info("Historical data ingestion completed")
+        return None
     
     def run_ingestion(self, max_players=None):
         """
-        Run the ingestion process sequentially with improved robustness.
+        Run the ingestion process sequentially.
         
         Args:
             max_players: Maximum number of players to process (for testing)
         """
-        logger.info("Starting sequential data ingestion")
+        logger.info("Starting data ingestion")
         logger.info(f"Will collect data for seasons: {', '.join(self.seasons)}")
         logger.info("=" * 80)
         
         self.stats["start_time"] = datetime.now()
+        self.stats["last_update_time"] = self.stats["start_time"]
+        self.stats["last_timer_check"] = self.stats["start_time"]
         
         # Get active players
         active_players = self.get_active_players()
@@ -668,6 +661,7 @@ class NBADataIngestion:
         
         total_players = len(active_players)
         logger.info(f"Processing {total_players} players sequentially")
+        logger.info(f"Initial timer estimate: {self.calculate_time_remaining(1, total_players)}")
         
         # Track progress for better visibility
         progress = tqdm(total=total_players, desc="Processing players")
@@ -698,6 +692,9 @@ class NBADataIngestion:
                 if (idx % self.config["batch_size"]) == 0:
                     logger.info(f"Checkpoint: Processed {idx}/{total_players} players, committing batch")
                     self.commit_batch()
+                    
+                    # Update timer information
+                    self.update_timer(idx, total_players)
                 
                 # Add random delay between players to avoid API rate limits
                 delay = random.uniform(
@@ -719,6 +716,9 @@ class NBADataIngestion:
         # Final commit for any remaining changes
         self.commit_batch()
         
+        # Final timer update
+        self.update_timer(total_players, total_players, force=True)
+        
         logger.info(f"Player processing completed: {successful_players} successful, {failed_players} failed")
         
         # Run cleanup operations if configured
@@ -736,7 +736,7 @@ class NBADataIngestion:
         # Close the database session
         self.close_session()
         
-        logger.info("Historical data ingestion completed successfully")
+        logger.info("Data ingestion completed successfully")
     
     def clean_duplicate_entries(self):
         """Remove duplicate game entries from the database."""
@@ -906,33 +906,28 @@ class NBADataIngestion:
 def main():
     """Main entrypoint for running the ingestion process."""
     parser = argparse.ArgumentParser(description="NBA Data Ingestion Tool")
-    parser.add_argument("--concurrent", action="store_true", help="Use concurrent processing")
     parser.add_argument("--seasons", type=int, default=5, help="Number of seasons to fetch")
     parser.add_argument("--batch-size", type=int, default=10, help="Players per batch")
-    parser.add_argument("--workers", type=int, default=3, help="Number of concurrent workers")
     parser.add_argument("--max-players", type=int, help="Maximum players to process (for testing)")
     parser.add_argument("--no-cache", action="store_true", help="Disable caching")
     parser.add_argument("--no-cleanup", action="store_true", help="Skip duplicate cleanup")
     parser.add_argument("--no-verify", action="store_true", help="Skip data verification")
+    parser.add_argument("--timer-interval", type=int, default=60, help="Time between progress updates (seconds)")
     args = parser.parse_args()
     
     # Create configuration from arguments
     config = {
         "seasons_to_fetch": args.seasons,
-        "max_concurrent_requests": args.workers,
         "batch_size": args.batch_size,
         "enable_caching": not args.no_cache,
         "clean_duplicates": not args.no_cleanup,
-        "verify_data": not args.no_verify
+        "verify_data": not args.no_verify,
+        "timer_interval": args.timer_interval
     }
     
     # Initialize and run ingestion
     ingestion = NBADataIngestion(config)
-    
-    if args.concurrent:
-        ingestion.run_concurrent_ingestion(max_players=args.max_players)
-    else:
-        ingestion.run_ingestion(max_players=args.max_players)
+    ingestion.run_ingestion(max_players=args.max_players)
 
 if __name__ == "__main__":
     main()
