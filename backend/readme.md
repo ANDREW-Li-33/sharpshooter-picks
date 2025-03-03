@@ -116,3 +116,15 @@ ft_attempted: Integer
 single quotations are used in the filepath because there's a space in the folder name
 ex. ```\copy (SELECT * FROM players) '~/Documents/Sharpshooter Picks/players.csv' CSV HEADER```
 ex. ```\copy (SELECT * FROM player_stats) '~/Documents/Sharpshooter Picks/player_stats.csv' CSV HEADER```
+
+
+
+
+### viewing the database in Command Line
+1. ```docker-compose up --build```
+2. ```docker exec -it sharpshooterpicks-db-1 psql -U postgres -d nba_betting```
+3. ```\dt```
+4. ```SELECT * FROM players LIMIT 10;```
+5. ```SEELCT * FROM player_stats LIMIT 10;```
+
+to clear the tables: ```docker-compose exec backend python scripts/init_db.py```
