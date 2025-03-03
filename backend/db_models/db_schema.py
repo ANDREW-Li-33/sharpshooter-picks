@@ -12,7 +12,10 @@ class Player(Base):
 
 class PlayerStats(Base):
     __tablename__ = 'player_stats'
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = {
+        'extend_existing': True,
+        'UniqueConstraint': ('player_id', 'game_id', name='uix_player_game')
+    }
 
     id = Column(Integer, primary_key=True)
     game_id = Column(String)
