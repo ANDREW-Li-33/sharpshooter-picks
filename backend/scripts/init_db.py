@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import database_exists, create_database
@@ -11,13 +12,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+script_dir = Path(__file__).resolve().parent  # .../backend/scripts
+backend_dir = script_dir.parent               # .../backend
+project_root = backend_dir.parent             # .../Sharpshooter Picks
+sys.path.append(str(project_root))
+
 from backend.db_config import Base, engine  
 from backend.db_models.db_schema import Player, PlayerStats
 
 def init_database():
     try:
+        logger.info(f"Using database URL: {engine.url}")
+        inspector = inspect(engine)
+        tables_before = inspector.get_table_names()
+        logger.info(f"Tables before drop: {tables_before}")
+        
         logger.info("Dropping existing tables...")
         Base.metadata.drop_all(engine)
+
+        inspector = inspect(engine)
+        tables_after = inspector.get_table_names()
+        logger.info(f"Tables after drop: {tables_after}")
         
         if not database_exists(engine.url):
             logger.info(f"Creating database at {engine.url}")
