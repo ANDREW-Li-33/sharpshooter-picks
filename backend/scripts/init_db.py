@@ -12,10 +12,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from backend.db_config import Base, engine  
-from backend.models.db_schema import Player, PlayerStats
+from backend.db_models.db_schema import Player, PlayerStats
 
 def init_database():
     try:
+        logger.info("Dropping existing tables...")
+        Base.metadata.drop_all(engine)
+        
         if not database_exists(engine.url):
             logger.info(f"Creating database at {engine.url}")
             create_database(engine.url)
