@@ -643,12 +643,12 @@ class NBADataIngestion:
     
     def run_ingestion(self, max_players=None):
         """
-        Run the ingestion process sequentially (deprecated, use run_concurrent_ingestion).
+        Run the ingestion process sequentially with improved robustness.
         
         Args:
             max_players: Maximum number of players to process (for testing)
         """
-        logger.info("Starting sequential data ingestion (deprecated)")
+        logger.info("Starting sequential data ingestion")
         logger.info(f"Will collect data for seasons: {', '.join(self.seasons)}")
         logger.info("=" * 80)
         
@@ -656,7 +656,6 @@ class NBADataIngestion:
         
         # Get active players
         active_players = self.get_active_players()
-        total_players = len(active_players)
         
         if not active_players:
             logger.error("Failed to retrieve active players list")
@@ -667,32 +666,68 @@ class NBADataIngestion:
             active_players = active_players[:max_players]
             logger.info(f"Limited processing to {max_players} players")
         
-        # Process each player
+        total_players = len(active_players)
+        logger.info(f"Processing {total_players} players sequentially")
+        
+        # Track progress for better visibility
+        progress = tqdm(total=total_players, desc="Processing players")
+        
+        # Process each player one at a time
+        successful_players = 0
+        failed_players = 0
+        
         for idx, player in enumerate(active_players, 1):
             try:
-                logger.info(f"Processing player {idx}/{total_players}: {player['full_name']}")
+                player_name = player['full_name']
+                logger.info(f"Processing player {idx}/{total_players}: {player_name}")
+                
                 games_processed, errors = self.process_player(player)
                 
+                if games_processed > 0:
+                    successful_players += 1
+                    logger.info(f"Successfully processed {games_processed} games for {player_name} with {errors} errors")
+                else:
+                    # If no games were processed but we didn't hit an exception
+                    if errors == 0:
+                        logger.info(f"No games found for {player_name}")
+                    else:
+                        failed_players += 1
+                        logger.warning(f"Failed to process any games for {player_name} with {errors} errors")
+                
+                # Commit at regular intervals to save progress
                 if (idx % self.config["batch_size"]) == 0:
-                    logger.info(f"Processed {idx}/{total_players} players, committing batch")
+                    logger.info(f"Checkpoint: Processed {idx}/{total_players} players, committing batch")
                     self.commit_batch()
                 
+                # Add random delay between players to avoid API rate limits
+                delay = random.uniform(
+                    self.config["request_delay_min"], 
+                    self.config["request_delay_max"]
+                )
+                time.sleep(delay)
+                
             except Exception as e:
-                logger.error(f"Error processing player {player['full_name']}: {e}")
+                failed_players += 1
+                logger.error(f"Error processing player {player['full_name']}: {str(e)}")
                 self.stats["errors"] += 1
-                continue
-            
-            time.sleep(random.uniform(0.5, 1.5))
-            logger.info("=" * 80)
+            finally:
+                # Update progress bar regardless of success/failure
+                progress.update(1)
+        
+        progress.close()
         
         # Final commit for any remaining changes
         self.commit_batch()
         
+        logger.info(f"Player processing completed: {successful_players} successful, {failed_players} failed")
+        
         # Run cleanup operations if configured
         if self.config["clean_duplicates"]:
+            logger.info("Running duplicate cleanup...")
             self.clean_duplicate_entries()
         
         if self.config["verify_data"]:
+            logger.info("Verifying data integrity...")
             self.verify_ingested_data()
         
         self.stats["end_time"] = datetime.now()
@@ -701,7 +736,7 @@ class NBADataIngestion:
         # Close the database session
         self.close_session()
         
-        logger.info("Historical data ingestion completed")
+        logger.info("Historical data ingestion completed successfully")
     
     def clean_duplicate_entries(self):
         """Remove duplicate game entries from the database."""

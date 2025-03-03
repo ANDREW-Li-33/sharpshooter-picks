@@ -73,6 +73,9 @@ coverage/
 logs/
 *.log
 
+# Cache files
+backend/scripts/cache/
+
 # System Files
 .DS_Store
 Thumbs.db
