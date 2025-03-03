@@ -24,8 +24,8 @@ sys.path.append(str(backend_dir))
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import leaguegamefinder
 from sqlalchemy.orm import Session
-from backend.db_models.db_schema import PlayerStats, Player
-from backend.db_config import engine
+from db_models.db_schema import PlayerStats, Player
+from db_config import engine
 
 # Configure logging
 log_dir = Path(__file__).parent / 'logs'
@@ -402,9 +402,11 @@ class NBADataIngestion:
                 self.stats["db_inserts"] += 1
                 logger.debug(f"Added new player: {player['full_name']} (ID: {player['id']})")
             
+
             # Add to processed set
             self.processed_player_ids.add(player['id'])
             self.stats["players_processed"] += 1
+            session.commit()
             
             return True
             
@@ -461,6 +463,8 @@ class NBADataIngestion:
             # Add to processed set
             self.processed_game_ids.add(game_player_key)
             self.stats["games_processed"] += 1
+
+            session.commit()
             
             return True
             

@@ -10,3 +10,5 @@ nba_api==1.7.0
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
 SQLAlchemy-Utils>=0.41.0
+tqdm>=4.67.1
+backoff>=2.2.1

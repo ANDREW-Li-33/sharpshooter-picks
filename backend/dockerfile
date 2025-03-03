@@ -4,6 +4,9 @@ FROM python:3.9
 # Set the working directory
 WORKDIR /app
 
+# Set Python path to include the current directory
+ENV PYTHONPATH="${PYTHONPATH}:/app"
+
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -15,4 +18,4 @@ COPY . .
 EXPOSE 5000
 
 # Run the Flask app
-CMD ["flask", "run", "--host=0.0.0.0"]
+CMD ["python", "-m", "flask", "run", "--host=0.0.0.0"]

@@ -5,7 +5,7 @@ import torch.optim as optim
 import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
-from backend.models.db_schema import PlayerStats, Player
+from db_models.db_schema import PlayerStats, Player
 import logging
 
 # Configure logging
