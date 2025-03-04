@@ -23,8 +23,8 @@ sys.path.append(str(backend_dir))
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import leaguegamefinder
 from sqlalchemy.orm import Session
-from db_models.db_schema import PlayerStats, Player
-from db_config import engine
+from backend.db_models.db_schema import PlayerStats, Player
+from backend.db_config import engine
 
 # Configure logging
 log_dir = Path(__file__).parent / 'logs'
@@ -88,8 +88,14 @@ class NBADataIngestion:
             "enable_caching": True,  # Enable data caching to reduce API calls
             "verify_data": True,  # Perform data validation after ingestion
             "clean_duplicates": True,  # Remove duplicate entries after ingestion
+            "retry_queue_persistence": True,  # Enable saving/loading the retry queue
+            "max_retries": 5,  # Maximum number of retries for failed requests
+            "base_wait_time": 300  # Base wait time between retries (seconds)
         }
         
+        # Initialize retry queue
+        self.retry_queue = []
+
         # Update with provided config
         self.config = self.default_config.copy()
         if config:
@@ -138,6 +144,7 @@ class NBADataIngestion:
             "db_inserts": 0,
             "db_updates": 0,
             "errors": 0,
+            "rate_limit_hits": 0,
             "start_time": None,
             "end_time": None,
             "last_update_time": None,
@@ -145,14 +152,27 @@ class NBADataIngestion:
             "timer_interval": 60  # How often to update timer (in seconds)
         }
         
+        # Load retry queue if persistence is enabled
+        if self.config["retry_queue_persistence"]:
+            self.load_retry_queue()
+        
         logger.info(f"Initialized NBA Data Ingestion with seasons: {', '.join(self.seasons)}")
         logger.info(f"Configuration: {json.dumps({k: v for k, v in self.config.items() if k != 'user_agents'}, indent=2)}")
     
     def rotate_user_agent(self):
         """Rotate the user agent to avoid API blocks."""
         user_agent = random.choice(self.config["user_agents"])
+        # Add specific headers that NBA.com expects
         self.http_session.headers.update({
-            'User-Agent': user_agent
+            'User-Agent': user_agent,
+            'Referer': 'https://stats.nba.com/',
+            'Origin': 'https://stats.nba.com',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'x-nba-stats-origin': 'stats',
+            'x-nba-stats-token': 'true'
         })
         return user_agent
     
@@ -225,6 +245,45 @@ class NBADataIngestion:
             logger.warning(f"Failed to load cached {cache_type} data: {e}")
             return None
     
+    def save_retry_queue(self):
+        """Save the retry queue to disk."""
+        if not self.retry_queue or not self.config["retry_queue_persistence"]:
+            return
+        
+        try:
+            queue_path = Path(self.config["data_cache_dir"]) / "retry_queue.json"
+            # Convert datetime objects to strings for JSON serialization
+            serializable_queue = []
+            for item in self.retry_queue:
+                item_copy = item.copy()
+                item_copy['last_attempt'] = item_copy['last_attempt'].isoformat()
+                serializable_queue.append(item_copy)
+                
+            with open(queue_path, 'w') as f:
+                json.dump(serializable_queue, f)
+            logger.info(f"Saved {len(self.retry_queue)} items to retry queue")
+        except Exception as e:
+            logger.error(f"Failed to save retry queue: {e}")
+
+    def load_retry_queue(self):
+        """Load the retry queue from disk if available."""
+        queue_path = Path(self.config["data_cache_dir"]) / "retry_queue.json"
+        if not queue_path.exists():
+            return
+            
+        try:
+            with open(queue_path, 'r') as f:
+                serialized_queue = json.load(f)
+            
+            # Convert string dates back to datetime objects
+            for item in serialized_queue:
+                item['last_attempt'] = datetime.fromisoformat(item['last_attempt'])
+                
+            self.retry_queue = serialized_queue
+            logger.info(f"Loaded {len(self.retry_queue)} items from retry queue")
+        except Exception as e:
+            logger.error(f"Failed to load retry queue: {e}")
+    
     @with_retry(max_attempts=5, initial_wait=2.0, backoff_factor=2.0)
     def get_active_players(self) -> List[Dict]:
         """
@@ -243,6 +302,10 @@ class NBADataIngestion:
             user_agent = self.rotate_user_agent()
             logger.info(f"Fetching active players with user agent: {user_agent[:30]}...")
             
+            # Add randomness for human-like behavior
+            human_like_delay = random.uniform(1.5, 5.0)
+            time.sleep(human_like_delay)
+            
             self.stats["api_requests"] += 1
             active_players = players.get_active_players()
             
@@ -255,13 +318,20 @@ class NBADataIngestion:
                 logger.warning("API returned empty player list")
                 return []
                 
+        except requests.exceptions.HTTPError as e:
+            if hasattr(e, 'response') and e.response.status_code == 429:
+                logger.warning("Rate limit exceeded when fetching active players")
+                self.stats["rate_limit_hits"] += 1
+            logger.error(f"HTTP error fetching active players: {e}")
+            self.stats["errors"] += 1
+            return []
         except Exception as e:
             logger.error(f"Error fetching active players: {e}")
             self.stats["errors"] += 1
             return []
     
     @with_retry(max_attempts=5, initial_wait=2.0, backoff_factor=2.0)
-    def get_player_games(self, player_id: int, season: str) -> pd.DataFrame:
+    def get_player_games(self, player_id: int, season: str) -> Optional[pd.DataFrame]:
         """
         Get games for a specific player and season.
         
@@ -270,13 +340,18 @@ class NBADataIngestion:
             season: Season string (e.g. '2022-23')
             
         Returns:
-            DataFrame of player games or empty DataFrame if not found
+            DataFrame of player games, empty DataFrame if no games found,
+            or None if an error occurred
         """
         # Try to load from cache first
         cached_games = self.load_from_cache("games", player_id, season)
         if cached_games:
             logger.debug(f"Loaded {len(cached_games)} games for player {player_id} in {season} from cache")
             return pd.DataFrame(cached_games)
+        
+        # Add randomness between season requests for the same player
+        human_like_delay = random.uniform(1.5, 7.0)
+        time.sleep(human_like_delay)
         
         # Implement exponential backoff with jitter
         delay = self.config["request_delay_min"] + random.uniform(0, self.config["request_delay_max"] - self.config["request_delay_min"])
@@ -307,13 +382,32 @@ class NBADataIngestion:
                 
                 return games_df
             else:
+                # This means we got a valid empty response (player didn't play that season)
                 logger.info(f"No games found for player {player_id} in {season}")
                 return pd.DataFrame()
                     
+        except requests.exceptions.HTTPError as e:
+            if hasattr(e, 'response') and e.response.status_code == 429:
+                # Rate limit exceeded
+                logger.warning(f"Rate limit exceeded for player {player_id} in {season}. Adding to retry queue with longer delay.")
+                self.stats["rate_limit_hits"] += 1
+                self.stats["errors"] += 1
+                return None
+            else:
+                logger.error(f"HTTP error fetching games for player {player_id} in {season}: {e}")
+                self.stats["errors"] += 1
+                return None
+        except requests.exceptions.Timeout as e:
+            # Explicitly handle timeouts differently
+            logger.error(f"Timeout error fetching games for player {player_id} in {season}: {e}")
+            self.stats["errors"] += 1
+            # Return None to indicate an error occurred (not an empty result)
+            return None
         except Exception as e:
             logger.error(f"Error fetching games for player {player_id} in {season}: {e}")
             self.stats["errors"] += 1
-            return pd.DataFrame()
+            # Return None to indicate an error occurred
+            return None
 
     def process_game_data(self, game_data: pd.Series, season: str) -> Dict:
         """
@@ -526,6 +620,18 @@ class NBADataIngestion:
             try:
                 logger.info(f"Fetching games for {player_name} in {season}")
                 games_df = self.get_player_games(player_id, season)
+
+                if games_df is None:
+                    # Add to retry queue
+                    self.retry_queue.append({
+                        'player_id': player_id,
+                        'player_name': player_name,
+                        'season': season,
+                        'retries': 0,
+                        'last_attempt': datetime.now()
+                    })
+                    logger.warning(f"Added {player_name} in {season} to retry queue due to API errors")
+                    continue
                 
                 if games_df.empty:
                     logger.info(f"No games found for {player_name} in {season}")
@@ -588,11 +694,7 @@ class NBADataIngestion:
         # Format as HH:MM:SS
         time_str = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
         
-        # Add estimated completion time
-        completion_time = current_time + remaining_time
-        completion_str = completion_time.strftime("%H:%M:%S")
-        
-        return f"{time_str} remaining (estimated completion at {completion_str})"
+        return time_str
         
     def update_timer(self, processed_count, total_count, force=False):
         """
@@ -623,21 +725,118 @@ class NBADataIngestion:
             progress_pct = (processed_count / total_count) * 100 if total_count > 0 else 0
             
             logger.info(f"Progress: {processed_count}/{total_count} players ({progress_pct:.1f}%)")
-            logger.info(f"Elapsed time: {elapsed_str} | {remaining_str}")
+            logger.info(f"Elapsed time: {elapsed_str} | Time remaining: {remaining_str}")
+            logger.info(f"Rate limit hits: {self.stats['rate_limit_hits']} | Retry queue size: {len(self.retry_queue)}")
             
             # Update timer check timestamp
             self.stats["last_timer_check"] = current_time
+            
+            # Save retry queue periodically
+            if self.config["retry_queue_persistence"] and self.retry_queue:
+                self.save_retry_queue()
             
             return remaining_str
         
         return None
     
-    def run_ingestion(self, max_players=None):
+    def process_retry_queue(self, max_retries=None, base_wait_time=None):
         """
-        Run the ingestion process sequentially.
+        Process items in the retry queue with a sufficient delay between attempts.
         
         Args:
-            max_players: Maximum number of players to process (for testing)
+            max_retries: Maximum number of retries (default: from config)
+            base_wait_time: Base wait time between retries (default: from config)
+        """
+        if not self.retry_queue:
+            logger.info("Retry queue is empty")
+            return
+        
+        # Use config values if not provided
+        max_retries = max_retries or self.config["max_retries"]
+        base_wait_time = base_wait_time or self.config["base_wait_time"]
+            
+        logger.info(f"Processing retry queue with {len(self.retry_queue)} items")
+        current_time = datetime.now()
+        
+        # Copy queue to avoid modification during iteration
+        queue_copy = self.retry_queue.copy()
+        self.retry_queue = []
+        
+        for item in queue_copy:
+            # Calculate exponential backoff wait time
+            required_wait_time = base_wait_time * (2 ** item['retries'])
+            time_since_last = (current_time - item['last_attempt']).total_seconds()
+            
+            if time_since_last < required_wait_time:
+                # Not waited long enough, put back in queue
+                self.retry_queue.append(item)
+                continue
+                
+            if item['retries'] >= max_retries:
+                logger.warning(f"Giving up on {item['player_name']} in {item['season']} after {max_retries} attempts")
+                continue
+                
+            logger.info(f"Retrying {item['player_name']} in {item['season']} (attempt {item['retries'] + 1})")
+            
+            # Execute with a longer timeout
+            try:
+                # Rotate user agent
+                self.rotate_user_agent()
+                
+                # Add human-like randomness
+                human_like_delay = random.uniform(2.0, 8.0)
+                time.sleep(human_like_delay)
+                
+                # Use a direct API call with longer timeout
+                player_games_query = leaguegamefinder.LeagueGameFinder(
+                    player_or_team_abbreviation="P",
+                    player_id_nullable=item['player_id'],
+                    season_nullable=item['season'],
+                    season_type_nullable="Regular Season",
+                    timeout=300  # Extended timeout for retries
+                )
+                
+                games_df = player_games_query.get_data_frames()[0]
+                
+                if not games_df.empty:
+                    logger.info(f"Retry successful! Retrieved {len(games_df)} games for {item['player_name']} in {item['season']}")
+                    
+                    # Cache the results
+                    games_data = games_df.to_dict('records')
+                    self.save_to_cache(games_data, "games", item['player_id'], item['season'])
+                    
+                    # Process the games
+                    games_processed = 0
+                    for _, game in games_df.iterrows():
+                        processed_data = self.process_game_data(game, item['season'])
+                        if processed_data and self.store_game_stats(processed_data):
+                            games_processed += 1
+                    
+                    logger.info(f"Processed {games_processed} games from retry for {item['player_name']} in {item['season']}")
+                    
+                else:
+                    logger.info(f"Retry successful but no games found for {item['player_name']} in {item['season']}")
+                    
+            except Exception as e:
+                # Increment retry count and put back in queue
+                item['retries'] += 1
+                item['last_attempt'] = datetime.now()
+                self.retry_queue.append(item)
+                logger.error(f"Retry failed for {item['player_name']} in {item['season']}: {e}")
+        
+        # Save updated retry queue
+        if self.config["retry_queue_persistence"] and self.retry_queue:
+            self.save_retry_queue()
+            
+        logger.info(f"Retry queue processing complete. {len(self.retry_queue)} items remaining")
+    
+    def run_ingestion(self, start_player=0, end_player=None):
+        """
+        Run ingestion process for a specific range of players.
+        
+        Args:
+            start_player: Index of the first player to process (0-based)
+            end_player: Index of the last player to process (exclusive)
         """
         logger.info("Starting data ingestion")
         logger.info(f"Will collect data for seasons: {', '.join(self.seasons)}")
@@ -654,10 +853,17 @@ class NBADataIngestion:
             logger.error("Failed to retrieve active players list")
             return
         
-        # Limit players if max_players is specified (useful for testing)
-        if max_players:
-            active_players = active_players[:max_players]
-            logger.info(f"Limited processing to {max_players} players")
+        # Apply range selection
+        if end_player is not None:
+            active_players = active_players[start_player:end_player]
+        elif start_player > 0:
+            active_players = active_players[start_player:]
+        
+        # Log the player range being processed
+        player_range_info = f"Processing players {start_player}"
+        if end_player is not None:
+            player_range_info += f" to {end_player-1}"
+        logger.info(player_range_info)
         
         total_players = len(active_players)
         logger.info(f"Processing {total_players} players sequentially")
@@ -670,7 +876,23 @@ class NBADataIngestion:
         successful_players = 0
         failed_players = 0
         
+        # Add rate limiting tracker
+        rate_limit_hits = 0
+        consecutive_timeouts = 0
+        
         for idx, player in enumerate(active_players, 1):
+            # If we've hit rate limits multiple times in succession, take a longer break
+            if consecutive_timeouts > 3:
+                logger.warning(f"Detected multiple consecutive timeouts. Taking a longer break (120s)")
+                time.sleep(120)
+                consecutive_timeouts = 0
+                
+            # Take a longer defensive break every 50 players
+            if idx > 0 and idx % 50 == 0:
+                cooling_period = random.uniform(180, 300)  # 3-5 minute break
+                logger.info(f"Taking a defensive cooling break of {cooling_period:.1f}s after {idx} players")
+                time.sleep(cooling_period)
+                
             try:
                 player_name = player['full_name']
                 logger.info(f"Processing player {idx}/{total_players}: {player_name}")
@@ -679,13 +901,16 @@ class NBADataIngestion:
                 
                 if games_processed > 0:
                     successful_players += 1
+                    consecutive_timeouts = 0  # Reset timeout counter on success
                     logger.info(f"Successfully processed {games_processed} games for {player_name} with {errors} errors")
                 else:
                     # If no games were processed but we didn't hit an exception
                     if errors == 0:
                         logger.info(f"No games found for {player_name}")
+                        consecutive_timeouts = 0  # Also reset on valid empty responses
                     else:
                         failed_players += 1
+                        consecutive_timeouts += 1
                         logger.warning(f"Failed to process any games for {player_name} with {errors} errors")
                 
                 # Commit at regular intervals to save progress
@@ -697,14 +922,26 @@ class NBADataIngestion:
                     self.update_timer(idx, total_players)
                 
                 # Add random delay between players to avoid API rate limits
-                delay = random.uniform(
-                    self.config["request_delay_min"], 
-                    self.config["request_delay_max"]
-                )
+                # Use a longer delay if we've recently hit rate limits
+                if self.stats["rate_limit_hits"] > rate_limit_hits:
+                    # We hit a new rate limit in this iteration
+                    logger.warning("Rate limit detected, increasing delay")
+                    delay = random.uniform(
+                        self.config["request_delay_max"], 
+                        self.config["request_delay_max"] * 2
+                    )
+                    rate_limit_hits = self.stats["rate_limit_hits"]
+                else:
+                    delay = random.uniform(
+                        self.config["request_delay_min"], 
+                        self.config["request_delay_max"]
+                    )
+                
                 time.sleep(delay)
                 
             except Exception as e:
                 failed_players += 1
+                consecutive_timeouts += 1
                 logger.error(f"Error processing player {player['full_name']}: {str(e)}")
                 self.stats["errors"] += 1
             finally:
@@ -715,6 +952,12 @@ class NBADataIngestion:
         
         # Final commit for any remaining changes
         self.commit_batch()
+
+        # Process retry queue if there are items
+        if self.retry_queue:
+            logger.info(f"Processing {len(self.retry_queue)} items in retry queue")
+            self.process_retry_queue()
+            self.commit_batch()
         
         # Final timer update
         self.update_timer(total_players, total_players, force=True)
@@ -892,6 +1135,8 @@ class NBADataIngestion:
         logger.info(f"Database inserts: {self.stats['db_inserts']}")
         logger.info(f"Database updates: {self.stats['db_updates']}")
         logger.info(f"Errors: {self.stats['errors']}")
+        logger.info(f"Rate limit hits: {self.stats['rate_limit_hits']}")
+        logger.info(f"Items remaining in retry queue: {len(self.retry_queue)}")
         
         if self.stats["games_processed"] > 0:
             success_rate = 100 * (1 - (self.stats["errors"] / (self.stats["games_processed"] + self.stats["errors"])))
@@ -908,11 +1153,14 @@ def main():
     parser = argparse.ArgumentParser(description="NBA Data Ingestion Tool")
     parser.add_argument("--seasons", type=int, default=5, help="Number of seasons to fetch")
     parser.add_argument("--batch-size", type=int, default=10, help="Players per batch")
-    parser.add_argument("--max-players", type=int, help="Maximum players to process (for testing)")
     parser.add_argument("--no-cache", action="store_true", help="Disable caching")
     parser.add_argument("--no-cleanup", action="store_true", help="Skip duplicate cleanup")
     parser.add_argument("--no-verify", action="store_true", help="Skip data verification")
+    parser.add_argument("--no-retry-queue", action="store_true", help="Disable retry queue persistence")
+    parser.add_argument("--max-retries", type=int, default=5, help="Maximum number of retries for failed requests")
     parser.add_argument("--timer-interval", type=int, default=60, help="Time between progress updates (seconds)")
+    parser.add_argument("--start-player", type=int, default=0, help="Index of the first player to process (0-based)")
+    parser.add_argument("--end-player", type=int, default=None, help="Index of the last player to process (exclusive)")
     args = parser.parse_args()
     
     # Create configuration from arguments
@@ -922,12 +1170,14 @@ def main():
         "enable_caching": not args.no_cache,
         "clean_duplicates": not args.no_cleanup,
         "verify_data": not args.no_verify,
+        "retry_queue_persistence": not args.no_retry_queue,
+        "max_retries": args.max_retries,
         "timer_interval": args.timer_interval
     }
     
     # Initialize and run ingestion
     ingestion = NBADataIngestion(config)
-    ingestion.run_ingestion(max_players=args.max_players)
+    ingestion.run_ingestion(start_player=args.start_player, end_player=args.end_player)
 
 if __name__ == "__main__":
     main()

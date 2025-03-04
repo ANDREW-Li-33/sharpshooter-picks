@@ -13,8 +13,8 @@ project_root = backend_dir.parent             # .../Sharpshooter Picks
 sys.path.append(str(project_root))            #  the actual project root
 
 from ingest_historical_stats import NBADataIngestion  # Same directory import
-from db_config import engine  # From parent directory
-from db_models.db_schema import Player, PlayerStats  # From parent's subdirectory
+from backend.db_config import engine  # From parent directory
+from backend.db_models.db_schema import Player, PlayerStats  # From parent's subdirectory
 
 class TestNBAIngestion:
     

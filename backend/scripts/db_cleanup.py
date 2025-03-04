@@ -19,7 +19,7 @@ backend_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(backend_dir))
 
 
-from db_config import engine
+from backend.db_config import engine
 
 
 def remove_duplicate_entries():

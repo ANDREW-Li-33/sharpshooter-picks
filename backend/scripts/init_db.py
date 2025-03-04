@@ -17,8 +17,8 @@ backend_dir = script_dir.parent               # .../backend
 project_root = backend_dir.parent             # .../Sharpshooter Picks
 sys.path.append(str(project_root))
 
-from db_config import Base, engine  
-from db_models.db_schema import Player, PlayerStats
+from backend.db_config import Base, engine  
+from backend.db_models.db_schema import Player, PlayerStats
 
 def init_database():
     try:
