@@ -15,6 +15,7 @@ from typing import List, Dict, Optional, Union, Tuple, Set
 from tqdm import tqdm
 import backoff
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 
 # Add the backend directory to the path so we can import from models
 backend_dir = Path(__file__).resolve().parent.parent
@@ -23,8 +24,8 @@ sys.path.append(str(backend_dir))
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import leaguegamefinder
 from sqlalchemy.orm import Session
-from backend.db_models.db_schema import PlayerStats, Player
-from backend.db_config import engine
+from db_models.db_schema import PlayerStats, Player
+from db_config import engine
 
 # Configure logging
 log_dir = Path(__file__).parent / 'logs'
@@ -988,12 +989,12 @@ class NBADataIngestion:
         
         try:
             # First, identify duplicates
-            find_duplicates_query = """
+            find_duplicates_query = text("""
                 SELECT player_id, game_id, COUNT(*) as count
                 FROM player_stats
                 GROUP BY player_id, game_id
                 HAVING COUNT(*) > 1
-            """
+            """)
             
             duplicate_result = session.execute(find_duplicates_query)
             duplicates = [{"player_id": row[0], "game_id": row[1], "count": row[2]} for row in duplicate_result]
@@ -1008,11 +1009,11 @@ class NBADataIngestion:
             total_deleted = 0
             for dup in duplicates:
                 # Get all duplicate entries for this player-game combination
-                find_entries_query = f"""
+                find_entries_query = text(f"""
                     SELECT id FROM player_stats
                     WHERE player_id = {dup['player_id']} AND game_id = '{dup['game_id']}'
                     ORDER BY id ASC
-                """
+                """)
                 
                 entries_result = session.execute(find_entries_query)
                 entry_ids = [row[0] for row in entries_result]
@@ -1020,10 +1021,10 @@ class NBADataIngestion:
                 # Keep the first one (with the lowest ID), delete the rest
                 if len(entry_ids) > 1:
                     ids_to_delete = entry_ids[1:]
-                    delete_query = f"""
+                    delete_query = text(f"""
                         DELETE FROM player_stats
                         WHERE id IN ({','.join(str(id) for id in ids_to_delete)})
-                    """
+                    """)
                     
                     result = session.execute(delete_query)
                     deleted_count = result.rowcount
@@ -1035,12 +1036,12 @@ class NBADataIngestion:
             logger.info(f"Successfully removed {total_deleted} duplicate entries")
             
             # Verify the cleanup was successful
-            verify_query = """
+            verify_query = text("""
                 SELECT player_id, game_id, COUNT(*) as count
                 FROM player_stats
                 GROUP BY player_id, game_id
                 HAVING COUNT(*) > 1
-            """
+            """)
             
             verify_result = session.execute(verify_query)
             remaining_duplicates = [row for row in verify_result]
@@ -1061,14 +1062,14 @@ class NBADataIngestion:
         
         try:
             # 1. Check for players with more than 82 games in a season
-            query = """
+            query = text("""
                 SELECT p.player_id, p.full_name, ps.season, COUNT(*) as game_count
                 FROM players p
                 JOIN player_stats ps ON p.player_id = ps.player_id
                 GROUP BY p.player_id, p.full_name, ps.season
                 HAVING COUNT(*) > 82
                 ORDER BY game_count DESC
-            """
+            """)
             
             result = session.execute(query)
             issues = [{"player_id": row[0], "name": row[1], "season": row[2], "count": row[3]} 
@@ -1082,10 +1083,10 @@ class NBADataIngestion:
                 logger.info("All player-seasons have 82 or fewer games - data looks valid")
             
             # 2. Check for missing essential data
-            missing_data_query = """
+            missing_data_query = text("""
                 SELECT COUNT(*) FROM player_stats 
                 WHERE points IS NULL OR rebounds IS NULL OR assists IS NULL
-            """
+            """)
             missing_count = session.execute(missing_data_query).scalar()
             
             if missing_count > 0:
@@ -1094,12 +1095,12 @@ class NBADataIngestion:
                 logger.info("No records with missing essential stats - data looks valid")
             
             # 3. Check for players without any game data
-            orphaned_query = """
+            orphaned_query = text("""
                 SELECT p.player_id, p.full_name
                 FROM players p
                 LEFT JOIN player_stats ps ON p.player_id = ps.player_id
                 WHERE ps.id IS NULL
-            """
+            """)
             
             orphan_result = session.execute(orphaned_query)
             orphans = [{"player_id": row[0], "name": row[1]} for row in orphan_result]
@@ -1152,27 +1153,23 @@ def main():
     """Main entrypoint for running the ingestion process."""
     parser = argparse.ArgumentParser(description="NBA Data Ingestion Tool")
     parser.add_argument("--seasons", type=int, default=5, help="Number of seasons to fetch")
-    parser.add_argument("--batch-size", type=int, default=10, help="Players per batch")
     parser.add_argument("--no-cache", action="store_true", help="Disable caching")
-    parser.add_argument("--no-cleanup", action="store_true", help="Skip duplicate cleanup")
     parser.add_argument("--no-verify", action="store_true", help="Skip data verification")
     parser.add_argument("--no-retry-queue", action="store_true", help="Disable retry queue persistence")
-    parser.add_argument("--max-retries", type=int, default=5, help="Maximum number of retries for failed requests")
-    parser.add_argument("--timer-interval", type=int, default=60, help="Time between progress updates (seconds)")
     parser.add_argument("--start-player", type=int, default=0, help="Index of the first player to process (0-based)")
     parser.add_argument("--end-player", type=int, default=None, help="Index of the last player to process (exclusive)")
     args = parser.parse_args()
     
-    # Create configuration from arguments
+    # Create configuration with simplified parameters and fixed defaults
     config = {
         "seasons_to_fetch": args.seasons,
-        "batch_size": args.batch_size,
+        "batch_size": 10,              
         "enable_caching": not args.no_cache,
-        "clean_duplicates": not args.no_cleanup,
+        "clean_duplicates": True,      
         "verify_data": not args.no_verify,
         "retry_queue_persistence": not args.no_retry_queue,
-        "max_retries": args.max_retries,
-        "timer_interval": args.timer_interval
+        "max_retries": 5,           
+        "timer_interval": 60
     }
     
     # Initialize and run ingestion
